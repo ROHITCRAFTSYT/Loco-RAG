@@ -54,25 +54,6 @@ Talk to **Ollama** & **LM Studio** models, chat with your own documents, and let
 - **Local embeddings** — `fastembed` (bundled) or an Ollama embedding model. No data leaves the box.
 - **Themes**, per-conversation system prompt and sampling params, tokens/sec readout.
 
-## Screenshots
-
-<!--
-  Drop your images into the docs/ folder using these exact filenames and they'll
-  appear automatically. See docs/README.md for what to capture & recommended sizes.
--->
-
-|  |  |
-|---|---|
-| ![Streaming chat with RAG citations](docs/chat-rag.png) | ![Knowledge base / document panel](docs/knowledge-base.png) |
-| _Streaming chat with inline citations_ | _Knowledge base & ingestion_ |
-| ![Agent mode tool-calling](docs/agent-mode.png) | ![Voice input + read-aloud](docs/voice.png) |
-| _Agent searching docs & web_ | _Voice in / out_ |
-
-> A 10-second GIF of streaming + a RAG answer with the source panel open makes the best hero
-> image — save it as `docs/demo.gif` and it will show below:
->
-> ![Demo](docs/demo.gif)
-
 ## Architecture
 
 ```
