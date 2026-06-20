@@ -1,8 +1,37 @@
-# Local LLM Chat with RAG
+<div align="center">
 
-A privacy-first, fully-local chat application for self-hosted LLMs (**Ollama**, **LM Studio**)
-with document Q&A (**RAG**), conversation memory, web search, and file uploads. React +
-TypeScript frontend, FastAPI backend. Nothing leaves your machine.
+# 🦙 Loco-RAG · Local LLM Chat with RAG
+
+**A privacy-first, fully-local chat app for self-hosted LLMs — with document Q&A, agents, memory, web search, and voice.**
+
+Talk to **Ollama** & **LM Studio** models, chat with your own documents, and let an agent search them for you — all on your machine. Nothing ever leaves the box.
+
+[![CI](https://github.com/ROHITCRAFTSYT/Loco-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/ROHITCRAFTSYT/Loco-RAG/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?logo=docker&logoColor=white)
+![Privacy](https://img.shields.io/badge/100%25-local-success)
+
+</div>
+
+> **Why?** Cloud chat apps send your conversations and documents to someone else's servers.
+> Loco-RAG gives you the same ChatGPT-class experience — streaming, RAG, citations, agents,
+> voice — running entirely against a local model. No API keys, no telemetry, no data leaving home.
+
+## ✨ Highlights
+
+| | |
+|---|---|
+| 💬 **Streaming chat** | SSE, markdown + code, stop / edit-and-rerun, tokens/sec |
+| 📚 **Deep RAG** | Hybrid retrieval (dense + BM25 → RRF), optional rerank, **inline citations** |
+| 🗂️ **Vector store** | ChromaDB *or* LanceDB — swap with one env var |
+| 📎 **Talk to this doc** | Attach a file to a single message for ephemeral RAG |
+| 🤖 **Agent mode** | Model decides when to search your docs / the web |
+| 🧠 **Memory** | Older turns summarized to stay in the context window |
+| 🌐 **Web search** | DuckDuckGo or self-hosted SearXNG, cited |
+| 🎙️ **Voice I/O** | Local speech-to-text (faster-whisper) + read-aloud |
 
 ## Features
 
@@ -24,6 +53,18 @@ TypeScript frontend, FastAPI backend. Nothing leaves your machine.
 - **Pluggable vector store** — ChromaDB (default) or LanceDB, switch with one env var.
 - **Local embeddings** — `fastembed` (bundled) or an Ollama embedding model. No data leaves the box.
 - **Themes**, per-conversation system prompt and sampling params, tokens/sec readout.
+
+## Screenshots
+
+> _Add screenshots/GIFs here once you run the app locally._ Drop image files into a
+> `docs/` folder and reference them, e.g.:
+>
+> ```markdown
+> ![Chat with citations](docs/chat-rag.png)
+> ![Knowledge base panel](docs/knowledge-base.png)
+> ```
+>
+> A 10-second GIF of streaming + a RAG answer with the source panel open makes the best hero image.
 
 ## Architecture
 
