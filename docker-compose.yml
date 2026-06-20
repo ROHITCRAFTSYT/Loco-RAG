@@ -1,0 +1,53 @@
+services:
+  backend:
+    build: ./backend
+    container_name: llmrag-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Reach the host's Ollama/LM Studio from inside the container.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      VECTOR_BACKEND: ${VECTOR_BACKEND:-chroma}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+      DATA_DIR: /data
+      DATABASE_URL: sqlite:////data/app.db
+      CHROMA_DIR: /data/chroma
+      LANCEDB_DIR: /data/lancedb
+    volumes:
+      - backend_data:/data
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build: ./frontend
+    container_name: llmrag-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+  # Optional private metasearch engine for web search.
+  # Enable with: docker compose --profile websearch up
+  searxng:
+    image: searxng/searxng:latest
+    container_name: llmrag-searxng
+    restart: unless-stopped
+    profiles: ["websearch"]
+    ports:
+      - "8080:8080"
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8080/
+
+volumes:
+  backend_data:
