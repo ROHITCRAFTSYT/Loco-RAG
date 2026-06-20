@@ -56,15 +56,22 @@ Talk to **Ollama** & **LM Studio** models, chat with your own documents, and let
 
 ## Screenshots
 
-> _Add screenshots/GIFs here once you run the app locally._ Drop image files into a
-> `docs/` folder and reference them, e.g.:
+<!--
+  Drop your images into the docs/ folder using these exact filenames and they'll
+  appear automatically. See docs/README.md for what to capture & recommended sizes.
+-->
+
+|  |  |
+|---|---|
+| ![Streaming chat with RAG citations](docs/chat-rag.png) | ![Knowledge base / document panel](docs/knowledge-base.png) |
+| _Streaming chat with inline citations_ | _Knowledge base & ingestion_ |
+| ![Agent mode tool-calling](docs/agent-mode.png) | ![Voice input + read-aloud](docs/voice.png) |
+| _Agent searching docs & web_ | _Voice in / out_ |
+
+> A 10-second GIF of streaming + a RAG answer with the source panel open makes the best hero
+> image — save it as `docs/demo.gif` and it will show below:
 >
-> ```markdown
-> ![Chat with citations](docs/chat-rag.png)
-> ![Knowledge base panel](docs/knowledge-base.png)
-> ```
->
-> A 10-second GIF of streaming + a RAG answer with the source panel open makes the best hero image.
+> ![Demo](docs/demo.gif)
 
 ## Architecture
 
