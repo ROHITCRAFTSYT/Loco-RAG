@@ -11,11 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
-
 COPY app ./app
 COPY scripts ./scripts
 COPY samples ./samples
+RUN pip install --upgrade pip && pip install .
 
 # Run as a non-root user and keep the data volume writable.
 RUN useradd --create-home --uid 10001 appuser \
