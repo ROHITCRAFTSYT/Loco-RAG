@@ -1,0 +1,122 @@
+<svg viewBox="0 0 760 185" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <style>
+    @keyframes lit {
+      0%   { opacity: 1; }
+      17%  { opacity: 0.3; }
+      100% { opacity: 0.3; }
+    }
+    @keyframes flow {
+      0%   { opacity: 0.15; }
+      8%   { opacity: 1; }
+      17%  { opacity: 0.15; }
+      100% { opacity: 0.15; }
+    }
+    @keyframes label-pop {
+      0%   { opacity: 0; transform: translateY(4px); }
+      5%   { opacity: 1; transform: translateY(0); }
+      17%  { opacity: 0; }
+      100% { opacity: 0; }
+    }
+
+    .n1  { animation: lit  6s 0s    infinite; opacity: 0.3; }
+    .n2  { animation: lit  6s 1s    infinite; opacity: 0.3; }
+    .n3  { animation: lit  6s 2s    infinite; opacity: 0.3; }
+    .n4  { animation: lit  6s 3s    infinite; opacity: 0.3; }
+    .n5  { animation: lit  6s 4s    infinite; opacity: 0.3; }
+    .n6  { animation: lit  6s 5s    infinite; opacity: 0.3; }
+
+    .f1  { animation: flow 6s 0.5s  infinite; opacity: 0.15; }
+    .f2  { animation: flow 6s 1.5s  infinite; opacity: 0.15; }
+    .f3  { animation: flow 6s 2.5s  infinite; opacity: 0.15; }
+    .f4  { animation: flow 6s 3.5s  infinite; opacity: 0.15; }
+    .f5  { animation: flow 6s 4.5s  infinite; opacity: 0.15; }
+  </style>
+
+  <rect width="760" height="185" fill="#0b0f19" rx="10"/>
+
+  <text x="380" y="22" fill="#6b7280" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="1">HOW A QUERY FLOWS THROUGH LOCO-RAG</text>
+
+  <!-- NODE 1 — User Query -->
+  <g class="n1">
+    <rect x="12"  y="38" width="108" height="72" rx="8" fill="#111827" stroke="#61DAFB" stroke-width="2"/>
+    <text x="66"  y="68"  fill="#61DAFB" font-size="11" font-weight="700" text-anchor="middle">User Query</text>
+    <text x="66"  y="84"  fill="#9ca3af" font-size="9"  text-anchor="middle">natural</text>
+    <text x="66"  y="98"  fill="#9ca3af" font-size="9"  text-anchor="middle">language</text>
+  </g>
+
+  <!-- ARROW 1 -->
+  <g class="f1">
+    <line x1="120" y1="74" x2="140" y2="74" stroke="#61DAFB" stroke-width="2" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- NODE 2 — Embed -->
+  <g class="n2">
+    <rect x="142" y="38" width="108" height="72" rx="8" fill="#111827" stroke="#a78bfa" stroke-width="2"/>
+    <text x="196" y="68"  fill="#a78bfa" font-size="11" font-weight="700" text-anchor="middle">Embed</text>
+    <text x="196" y="84"  fill="#9ca3af" font-size="9"  text-anchor="middle">fastembed</text>
+    <text x="196" y="98"  fill="#9ca3af" font-size="9"  text-anchor="middle">+ BM25 tokens</text>
+  </g>
+
+  <!-- ARROW 2 -->
+  <g class="f2">
+    <line x1="250" y1="74" x2="270" y2="74" stroke="#a78bfa" stroke-width="2" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- NODE 3 — Vector Store -->
+  <g class="n3">
+    <rect x="272" y="38" width="108" height="72" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="2"/>
+    <text x="326" y="64"  fill="#f59e0b" font-size="11" font-weight="700" text-anchor="middle">Vector Store</text>
+    <text x="326" y="80"  fill="#9ca3af" font-size="9"  text-anchor="middle">ChromaDB</text>
+    <text x="326" y="94"  fill="#9ca3af" font-size="9"  text-anchor="middle">or LanceDB</text>
+    <text x="326" y="104" fill="#6b7280" font-size="8"  text-anchor="middle">dense + BM25</text>
+  </g>
+
+  <!-- ARROW 3 -->
+  <g class="f3">
+    <line x1="380" y1="74" x2="400" y2="74" stroke="#f59e0b" stroke-width="2" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- NODE 4 — RRF + Rerank -->
+  <g class="n4">
+    <rect x="402" y="38" width="108" height="72" rx="8" fill="#111827" stroke="#34d399" stroke-width="2"/>
+    <text x="456" y="64"  fill="#34d399" font-size="11" font-weight="700" text-anchor="middle">RRF Fusion</text>
+    <text x="456" y="80"  fill="#9ca3af" font-size="9"  text-anchor="middle">rank merging</text>
+    <text x="456" y="94"  fill="#9ca3af" font-size="9"  text-anchor="middle">+ rerank</text>
+    <text x="456" y="104" fill="#6b7280" font-size="8"  text-anchor="middle">(optional)</text>
+  </g>
+
+  <!-- ARROW 4 -->
+  <g class="f4">
+    <line x1="510" y1="74" x2="530" y2="74" stroke="#34d399" stroke-width="2" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- NODE 5 — LLM -->
+  <g class="n5">
+    <rect x="532" y="38" width="108" height="72" rx="8" fill="#111827" stroke="#009688" stroke-width="2"/>
+    <text x="586" y="68"  fill="#009688" font-size="11" font-weight="700" text-anchor="middle">LLM</text>
+    <text x="586" y="84"  fill="#9ca3af" font-size="9"  text-anchor="middle">Ollama /</text>
+    <text x="586" y="98"  fill="#9ca3af" font-size="9"  text-anchor="middle">LM Studio</text>
+  </g>
+
+  <!-- ARROW 5 -->
+  <g class="f5">
+    <line x1="640" y1="74" x2="660" y2="74" stroke="#009688" stroke-width="2" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- NODE 6 — Answer -->
+  <g class="n6">
+    <rect x="662" y="38" width="86" height="72" rx="8" fill="#111827" stroke="#61DAFB" stroke-width="2"/>
+    <text x="705" y="64"  fill="#61DAFB" font-size="11" font-weight="700" text-anchor="middle">Answer</text>
+    <text x="705" y="82"  fill="#34d399" font-size="10" text-anchor="middle">✓ streamed</text>
+    <text x="705" y="97"  fill="#34d399" font-size="10" text-anchor="middle">✓ cited</text>
+  </g>
+
+  <!-- Bottom tagline -->
+  <text x="380" y="166" fill="#374151" font-size="10" text-anchor="middle">100% local · no API keys · no telemetry · nothing leaves the machine</text>
+</svg>

@@ -20,6 +20,10 @@ Talk to **Ollama** & **LM Studio** models, chat with your own documents, and let
 > Loco-RAG gives you the same ChatGPT-class experience — streaming, RAG, citations, agents,
 > voice — running entirely against a local model. No API keys, no telemetry, no data leaving home.
 
+<p align="center">
+  <img src="docs/demo.svg" alt="Animated flow: query → embed → vector store → RRF fusion → LLM → cited answer" width="760">
+</p>
+
 ## ✨ Highlights
 
 | | |
@@ -69,6 +73,10 @@ React (Vite) ──SSE──> FastAPI ──> Ollama / LM Studio   (chat, OpenAI
 
 Key seams: `services/llm` (provider abstraction), `services/vectorstore` (Chroma/LanceDB factory),
 `services/rag.py` (hybrid retrieval + the **one** context-builder shared by RAG, web, and memory).
+
+<p align="center">
+  <img src="docs/rag-pipeline.svg" alt="RAG pipeline: documents → parse → chunk → embed → vector store (ingest); user query → dense search + BM25 → RRF fusion → rerank → context → LLM answer with citations (retrieve)" width="900">
+</p>
 
 ## Quick start (Docker)
 
