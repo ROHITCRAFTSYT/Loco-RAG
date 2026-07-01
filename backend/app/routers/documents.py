@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.db import engine, get_session
 from app.models import Document
+from app.schemas import IngestResponse
 from app.services import ingest
 from app.services.vectorstore import get_vectorstore
 
@@ -39,7 +40,7 @@ def _process(document_id: str, collection: str, filename: str, content_type: str
         session.commit()
 
 
-@router.post("/upload")
+@router.post("/upload", response_model=IngestResponse)
 async def upload(
     background: BackgroundTasks,
     file: UploadFile = File(...),
