@@ -11,6 +11,10 @@ class ConversationCreate(BaseModel):
     system_prompt: Optional[str] = None
     model: Optional[str] = None
     provider: Optional[str] = None
+    rag_enabled: Optional[bool] = None
+    collection: Optional[str] = None
+    web_search: Optional[bool] = None
+    pinned: Optional[bool] = None
 
 
 class ConversationUpdate(BaseModel):
