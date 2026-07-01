@@ -84,4 +84,5 @@ def health():
         "vector_backend": settings.vector_backend,
         "embed_provider": settings.embed_provider,
         "default_provider": settings.default_provider,
+        "default_model": settings.default_model,
     }
