@@ -83,7 +83,9 @@ export function Sidebar({ activeId, onSelect }: Props) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                del.mutate(c.id);
+                if (window.confirm(`Delete "${c.title}"? This can't be undone.`)) {
+                  del.mutate(c.id);
+                }
               }}
               className="text-muted opacity-0 hover:text-red-400 group-hover:opacity-100"
             >
