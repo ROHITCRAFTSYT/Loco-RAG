@@ -66,7 +66,7 @@ async def search(query: str) -> list[Source]:
             Source(
                 id=f"web:{i}",
                 document=r.get("title") or url,
-                score=1.0 - i * 0.05,
+                score=max(0.0, 1.0 - i * 0.05),
                 text=text,
                 kind="web",
                 url=url,
