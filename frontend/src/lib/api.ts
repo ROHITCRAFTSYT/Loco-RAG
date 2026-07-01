@@ -50,9 +50,9 @@ export const api = {
 
   // Documents
   listDocuments: (collection?: string) =>
-    fetch(`${BASE}/api/documents${collection ? `?collection=${collection}` : ""}`).then((r) =>
-      json<DocumentMeta[]>(r),
-    ),
+    fetch(
+      `${BASE}/api/documents${collection ? `?collection=${encodeURIComponent(collection)}` : ""}`,
+    ).then((r) => json<DocumentMeta[]>(r)),
 
   listCollections: () =>
     fetch(`${BASE}/api/documents/collections`).then((r) => json<string[]>(r)),
@@ -62,7 +62,7 @@ export const api = {
     fd.append("file", file);
     fd.append("collection", collection);
     return fetch(`${BASE}/api/documents/upload`, { method: "POST", body: fd }).then((r) =>
-      json<{ document_id: string; status: string }>(r),
+      json<{ document_id: string; status: string; chunk_count: number }>(r),
     );
   },
 
