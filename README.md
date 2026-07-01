@@ -56,6 +56,10 @@ Talk to **Ollama** & **LM Studio** models, chat with your own documents, and let
 
 ## Architecture
 
+<p align="center">
+  <img src="docs/architecture.svg" alt="Loco-RAG architecture: React frontend talks SSE to a FastAPI backend, which talks to Ollama/LM Studio, SQLite, Chroma/LanceDB, and DuckDuckGo/SearXNG" width="720">
+</p>
+
 ```
 React (Vite) ──SSE──> FastAPI ──> Ollama / LM Studio   (chat, OpenAI /v1 API)
                           ├──────> SQLite               (conversations, messages, docs)
@@ -105,7 +109,9 @@ docker compose --profile websearch up --build   # then set WEBSEARCH_PROVIDER=se
 
 ```bash
 cd backend
-python -m venv .venv && .venv\Scripts\activate      # Windows
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+source .venv/bin/activate     # macOS / Linux
 pip install -e ".[dev]"
 uvicorn app.main:app --reload --port 8000
 ```
