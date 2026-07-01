@@ -48,6 +48,7 @@ export function Composer({
   const [attaching, setAttaching] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
@@ -94,6 +95,7 @@ export function Composer({
       return;
     }
     try {
+      setMicError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
@@ -113,8 +115,13 @@ export function Composer({
       recRef.current = rec;
       rec.start();
       setRecording(true);
-    } catch {
+    } catch (err) {
       setRecording(false);
+      setMicError(
+        err instanceof DOMException && err.name === "NotAllowedError"
+          ? "Microphone access was denied."
+          : "Couldn't access the microphone.",
+      );
     }
   };
 
@@ -132,6 +139,12 @@ export function Composer({
             Web search
           </Toggle>
         </div>
+
+        {micError && (
+          <div className="mb-2 text-xs text-red-400" role="alert">
+            {micError}
+          </div>
+        )}
 
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
