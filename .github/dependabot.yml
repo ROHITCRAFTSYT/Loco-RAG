@@ -1,0 +1,43 @@
+version: 2
+updates:
+  # GitHub Actions used by the CI workflow
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  # Backend dependencies declared in backend/pyproject.toml
+  - package-ecosystem: pip
+    directory: "/backend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      backend-dependencies:
+        patterns: ["*"]
+
+  # Frontend packages
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      frontend-dependencies:
+        patterns: ["*"]
+
+  # Base images for the compose stack
+  - package-ecosystem: docker
+    directories:
+      - "/backend"
+      - "/frontend"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
