@@ -42,3 +42,12 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# Pin the rule set explicitly instead of riding ruff's default selection, which
+# widened in 0.16 (adding UP/B/S/SIM/BLE) and broke CI on an unrelated push. The
+# intentional patterns here — FastAPI Depends()/File() defaults, broad except
+# guards that convert errors to JSON 500s, and Optional[...] typing — are by
+# design, so keep lint to import/pyflakes/pycodestyle and leave E501 to judgement.
+select = ["E", "F", "I"]
+ignore = ["E501"]
