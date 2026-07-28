@@ -3,6 +3,7 @@ unified context builder shared by document RAG, web search, and memory.
 """
 from __future__ import annotations
 
+import math
 import re
 from functools import lru_cache
 
@@ -17,6 +18,51 @@ _TOKEN_RE = re.compile(r"\w+")
 
 def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def mmr_order(
+    query_vec: list[float],
+    cand_vecs: list[list[float]],
+    k: int,
+    lambda_: float = 0.5,
+) -> list[int]:
+    """Maximal Marginal Relevance: greedily pick ``k`` candidate indices that are
+    relevant to the query yet diverse from each other.
+
+    Each pick maximises ``lambda_ * sim(query, cand) - (1 - lambda_) * max
+    sim(cand, already_selected)``. ``lambda_=1`` reduces to pure relevance order;
+    ``lambda_=0`` maximises diversity. Returns candidate indices in selection
+    order. Pure math — no embedder or store.
+    """
+    n = len(cand_vecs)
+    if n == 0:
+        return []
+    k = min(k, n)
+    rel = [_cosine(query_vec, c) for c in cand_vecs]
+    selected: list[int] = []
+    remaining = set(range(n))
+    while len(selected) < k:
+        best_i, best_score = -1, -math.inf
+        for i in remaining:
+            if selected:
+                diversity = max(_cosine(cand_vecs[i], cand_vecs[j]) for j in selected)
+            else:
+                diversity = 0.0
+            score = lambda_ * rel[i] - (1.0 - lambda_) * diversity
+            if score > best_score:
+                best_score, best_i = score, i
+        selected.append(best_i)
+        remaining.discard(best_i)
+    return selected
 
 
 def _bm25_search(collection: str, query: str, top_k: int) -> list[QueryHit]:
@@ -91,10 +137,18 @@ def retrieve(
 
     hits = _rrf_fuse(rank_lists) if len(rank_lists) > 1 else (rank_lists[0] if rank_lists else [])
 
+    n_final = settings.rerank_top_n
     if settings.enable_rerank and hits:
-        hits = _rerank(query, hits, settings.rerank_top_n)
+        # When MMR will diversify, rerank a wider pool so it has candidates to
+        # choose from; otherwise rerank straight down to the final count.
+        hits = _rerank(query, hits, top_k if settings.enable_mmr else n_final)
+
+    if settings.enable_mmr and len(hits) > n_final:
+        cand_vecs = get_embedder().embed([h.text for h in hits])
+        order = mmr_order(dense_q, cand_vecs, n_final, settings.mmr_lambda)
+        hits = [hits[i] for i in order]
     else:
-        hits = hits[: settings.rerank_top_n]
+        hits = hits[:n_final]
 
     return [
         Source(

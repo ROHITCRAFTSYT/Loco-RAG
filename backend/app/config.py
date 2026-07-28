@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     rerank_top_n: int = 4
     enable_rerank: bool = False
     rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    # Maximal Marginal Relevance: diversify the final chunks so the context isn't
+    # several near-duplicate passages. lambda 1.0 = pure relevance, 0.0 = pure
+    # diversity; 0.5 balances both.
+    enable_mmr: bool = False
+    mmr_lambda: float = 0.5
 
     # --- Memory ---
     memory_summarize_after_tokens: int = 3000

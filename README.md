@@ -29,7 +29,7 @@ Talk to **Ollama** & **LM Studio** models, chat with your own documents, and let
 | | |
 |---|---|
 | 💬 **Streaming chat** | SSE, markdown + code, stop / edit-and-rerun, tokens/sec |
-| 📚 **Deep RAG** | Hybrid retrieval (dense + BM25 → RRF), optional rerank, **inline citations** |
+| 📚 **Deep RAG** | Hybrid retrieval (dense + BM25 → RRF), optional rerank, **MMR diversification**, **inline citations** |
 | 🗂️ **Vector store** | ChromaDB *or* LanceDB — swap with one env var |
 | 📎 **Talk to this doc** | Attach a file to a single message for ephemeral RAG |
 | 🤖 **Agent mode** | Model decides when to search your docs / the web |
@@ -43,8 +43,9 @@ Talk to **Ollama** & **LM Studio** models, chat with your own documents, and let
 - **Multi-conversation** sidebar (create, rename via auto-title, pin, search, delete).
 - **Model switcher** that auto-discovers installed Ollama / LM Studio models (vision models flagged).
 - **RAG / document Q&A** — drag-and-drop PDF, DOCX, TXT, MD, CSV, code. Token-aware chunking,
-  **hybrid retrieval** (dense + BM25 fused with RRF), optional cross-encoder **reranking**, and
-  **inline citations** with an expandable source panel.
+  **hybrid retrieval** (dense + BM25 fused with RRF), optional cross-encoder **reranking**,
+  optional **MMR diversification** (`ENABLE_MMR`) so the context isn't several near-duplicate
+  passages, and **inline citations** with an expandable source panel.
 - **Collections / knowledge bases** — group docs and scope a chat to a collection.
 - **"Talk to this doc"** — attach a file to a single message (paperclip) for ephemeral RAG over
   just that file, without adding it to a persistent collection.
