@@ -77,6 +77,28 @@ def chunk_tokens(pages: list[tuple[int | None, str]]) -> list[ParsedChunk]:
     return chunks
 
 
+def aggregate_collection_stats(documents) -> dict[str, dict[str, int]]:
+    """Roll per-document rows up into per-collection totals: ``documents``,
+    ``ready`` (successfully ingested), ``chunks`` and ``size_bytes``. Ephemeral
+    per-conversation ``chat-*`` attachment collections are excluded so only real
+    knowledge bases show up. Pure — operates on any objects exposing
+    ``collection`` / ``chunk_count`` / ``size_bytes`` / ``status``.
+    """
+    stats: dict[str, dict[str, int]] = {}
+    for d in documents:
+        if d.collection.startswith("chat-"):
+            continue
+        s = stats.setdefault(
+            d.collection, {"documents": 0, "ready": 0, "chunks": 0, "size_bytes": 0}
+        )
+        s["documents"] += 1
+        s["chunks"] += d.chunk_count or 0
+        s["size_bytes"] += d.size_bytes or 0
+        if d.status == "ready":
+            s["ready"] += 1
+    return stats
+
+
 def ingest_document(
     *, document_id: str, collection: str, filename: str, content_type: str | None, data: bytes
 ) -> int:

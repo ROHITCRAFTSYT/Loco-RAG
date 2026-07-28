@@ -118,6 +118,14 @@ def list_documents(collection: str | None = None, session: Session = Depends(get
     return session.exec(stmt).all()
 
 
+@router.get("/stats")
+def collection_stats(session: Session = Depends(get_session)):
+    """Per-collection knowledge-base totals: documents, ready count, chunks, and
+    bytes. Ephemeral chat-attachment collections are excluded."""
+    docs = session.exec(select(Document)).all()
+    return ingest.aggregate_collection_stats(docs)
+
+
 @router.get("/collections")
 def list_collections(session: Session = Depends(get_session)):
     rows = session.exec(select(Document.collection).distinct()).all()
