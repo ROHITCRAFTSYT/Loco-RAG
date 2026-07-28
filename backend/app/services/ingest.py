@@ -1,6 +1,7 @@
 """Document parsing + token-aware chunking, then embed + index."""
 from __future__ import annotations
 
+import hashlib
 import io
 from dataclasses import dataclass
 
@@ -77,6 +78,16 @@ def chunk_tokens(pages: list[tuple[int | None, str]]) -> list[ParsedChunk]:
     return chunks
 
 
+def content_sha256(data: bytes) -> str:
+    """Stable content fingerprint of the raw file bytes.
+
+    Stamped onto every chunk's metadata so a chunk can be traced back to the exact
+    file version it came from, and so callers can detect a re-upload of identical
+    content (same hash) instead of silently duplicating it in the index.
+    """
+    return hashlib.sha256(data).hexdigest()
+
+
 def aggregate_collection_stats(documents) -> dict[str, dict[str, int]]:
     """Roll per-document rows up into per-collection totals: ``documents``,
     ``ready`` (successfully ingested), ``chunks`` and ``size_bytes``. Ephemeral
@@ -111,6 +122,7 @@ def ingest_document(
     embedder = get_embedder()
     vectors = embedder.embed([c.text for c in chunks])
     store = get_vectorstore()
+    content_hash = content_sha256(data)
 
     records = [
         VectorRecord(
@@ -123,6 +135,7 @@ def ingest_document(
                 "collection": collection,
                 "page": c.page,
                 "chunk_index": c.chunk_index,
+                "content_hash": content_hash,
             },
         )
         for c, vec in zip(chunks, vectors)
