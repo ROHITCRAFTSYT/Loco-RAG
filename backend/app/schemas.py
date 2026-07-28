@@ -65,6 +65,7 @@ class Source(BaseModel):
     text: str
     kind: str = "document"  # "document" | "web" | "memory"
     url: Optional[str] = None
+    content_hash: Optional[str] = None  # provenance: which file version this chunk came from
 
 
 class IngestResponse(BaseModel):

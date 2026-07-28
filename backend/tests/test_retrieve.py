@@ -75,3 +75,20 @@ def test_retrieve_maps_metadata_into_sources(wired, monkeypatch):
     assert s.kind == "document"
     assert s.collection == "kb"
     assert isinstance(s.score, float)
+
+
+def test_retrieve_propagates_content_hash(monkeypatch):
+    hits = [
+        QueryHit(id="A", text="docA", score=0.9,
+                 metadata={"document": "a.pdf", "content_hash": "abc123"}),
+        QueryHit(id="B", text="docB", score=0.5, metadata={"document": "b.pdf"}),
+    ]
+    monkeypatch.setattr(rag, "get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr(rag, "get_vectorstore", lambda: FakeStore(hits))
+    monkeypatch.setattr(settings, "enable_rerank", False, raising=False)
+    monkeypatch.setattr(settings, "enable_mmr", False, raising=False)
+    monkeypatch.setattr(settings, "rerank_top_n", 2, raising=False)
+    sources = rag.retrieve("q", "kb", hybrid=False)
+    by_id = {s.id: s for s in sources}
+    assert by_id["A"].content_hash == "abc123"   # provenance carried through
+    assert by_id["B"].content_hash is None       # absent metadata -> None, no crash

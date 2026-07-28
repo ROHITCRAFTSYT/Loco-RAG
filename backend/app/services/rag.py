@@ -160,6 +160,7 @@ def retrieve(
             score=round(h.score, 4),
             text=h.text,
             kind="document",
+            content_hash=h.metadata.get("content_hash"),
         )
         for h in hits
     ]
