@@ -64,7 +64,10 @@ async def search(query: str) -> list[Source]:
             continue
         sources.append(
             Source(
-                id=f"web:{i}",
+                # Key by URL, not position: the agent may call web_search several
+                # times per turn, and positional ids (web:0, web:1, …) collide
+                # across calls so its id-based dedup would drop valid results.
+                id=f"web:{url}" if url else f"web:{i}",
                 document=r.get("title") or url,
                 score=max(0.0, 1.0 - i * 0.05),
                 text=text,
