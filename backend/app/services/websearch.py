@@ -47,6 +47,12 @@ async def _extract(url: str) -> str:
 
 
 async def search(query: str) -> list[Source]:
+    """Run a web search and return extracted-text Sources.
+
+    Uses SearXNG or DuckDuckGo per ``settings.websearch_provider``, fetches
+    and extracts each result page (falling back to the result snippet when
+    extraction is empty), and skips results with no usable text.
+    """
     max_results = settings.websearch_max_results
     if settings.websearch_provider == "searxng":
         results = await _searxng_results(query, max_results)
