@@ -47,6 +47,12 @@ async def _extract(url: str) -> str:
 
 
 async def search(query: str) -> list[Source]:
+    """Run a web search and return extracted-text Sources.
+
+    Uses SearXNG or DuckDuckGo per ``settings.websearch_provider``, fetches
+    and extracts each result page (falling back to the result snippet when
+    extraction is empty), and skips results with no usable text.
+    """
     max_results = settings.websearch_max_results
     if settings.websearch_provider == "searxng":
         results = await _searxng_results(query, max_results)
@@ -64,7 +70,10 @@ async def search(query: str) -> list[Source]:
             continue
         sources.append(
             Source(
-                id=f"web:{i}",
+                # Key by URL, not position: the agent may call web_search several
+                # times per turn, and positional ids (web:0, web:1, …) collide
+                # across calls so its id-based dedup would drop valid results.
+                id=f"web:{url}" if url else f"web:{i}",
                 document=r.get("title") or url,
                 score=max(0.0, 1.0 - i * 0.05),
                 text=text,

@@ -41,7 +41,7 @@ async def test_builds_sources_with_descending_scores(monkeypatch):
     ])
     _mock_extract(monkeypatch, {"https://a.com": "full a", "https://b.com": "full b"})
     sources = await websearch.search("q")
-    assert [s.id for s in sources] == ["web:0", "web:1"]
+    assert [s.id for s in sources] == ["web:https://a.com", "web:https://b.com"]
     assert all(s.kind == "web" for s in sources)
     assert sources[0].score > sources[1].score          # rank-decayed
     assert sources[0].url == "https://a.com"
@@ -70,3 +70,16 @@ async def test_empty_provider_results_yield_no_sources(monkeypatch):
     _mock_results(monkeypatch, [])
     _mock_extract(monkeypatch, {})
     assert await websearch.search("q") == []
+
+
+async def test_ids_are_url_stable_across_calls(monkeypatch):
+    # The agent can call web_search multiple times per turn and dedups Sources by
+    # id. Ids must be derived from the URL so results from a second call don't
+    # collide with the first (positional ids would both start at web:0).
+    _mock_extract(monkeypatch, {})
+    _mock_results(monkeypatch, [{"title": "A", "href": "https://a.com", "body": "a"}])
+    first = await websearch.search("q1")
+    _mock_results(monkeypatch, [{"title": "B", "href": "https://b.com", "body": "b"}])
+    second = await websearch.search("q2")
+    assert first[0].id != second[0].id
+    assert first[0].id == "web:https://a.com"
