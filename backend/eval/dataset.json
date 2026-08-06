@@ -1,0 +1,12 @@
+[
+  {"query": "how much overlap is there between chunks", "relevant": ["chunking.md"]},
+  {"query": "why count tokens instead of characters when splitting text", "relevant": ["chunking.md"]},
+  {"query": "which embedding model is used by default", "relevant": ["embeddings.md"]},
+  {"query": "does the embedder need an internet connection or api key", "relevant": ["embeddings.md"]},
+  {"query": "what happens if I switch from chroma to lancedb", "relevant": ["vector-stores.md"]},
+  {"query": "how do I choose the vector database backend", "relevant": ["vector-stores.md"]},
+  {"query": "how are the dense and keyword result lists combined", "relevant": ["hybrid-retrieval.md"]},
+  {"query": "what is reciprocal rank fusion", "relevant": ["hybrid-retrieval.md"]},
+  {"query": "can web results be self hosted without a third party", "relevant": ["web-search.md"]},
+  {"query": "how is the main text pulled out of a fetched page", "relevant": ["web-search.md"]}
+]
