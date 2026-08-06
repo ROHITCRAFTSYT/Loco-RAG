@@ -47,6 +47,12 @@ def _read_text(data: bytes) -> list[tuple[int, str]]:
 
 
 def parse(filename: str, content_type: str | None, data: bytes) -> list[tuple[int | None, str]]:
+    """Extract text from an uploaded file as ``(page_no, text)`` tuples.
+
+    Dispatches to the right reader by extension/content-type: PDF and DOCX
+    retain per-page tags, while everything else (txt, md, csv, code) is read
+    as a single block. ``page_no`` is ``None`` for formats without pages.
+    """
     name = filename.lower()
     if name.endswith(".pdf") or content_type == "application/pdf":
         return _read_pdf(data)
