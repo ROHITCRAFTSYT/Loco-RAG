@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     app_name: str = "Local LLM Chat with RAG"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:4173"]
     data_dir: str = "./data"
+    # Cap upload size so a single large file cannot exhaust server memory
+    # (uploads are read fully into RAM for parsing).
+    max_upload_mb: int = 50
 
     # --- Database ---
     database_url: str = "sqlite:///./data/app.db"

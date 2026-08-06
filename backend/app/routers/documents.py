@@ -14,6 +14,25 @@ from app.services.vectorstore import get_vectorstore
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
+async def _read_capped(file: UploadFile) -> bytes:
+    """Read an upload fully into memory, but refuse anything over the configured
+    size limit so a large file cannot exhaust server memory (returns HTTP 413).
+    The file is read in chunks and aborted as soon as the cap is exceeded.
+    """
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(413, f"File too large (limit {settings.max_upload_mb} MB)")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _process(document_id: str, collection: str, filename: str, content_type: str | None, data: bytes):
     with Session(engine) as session:
         doc = session.get(Document, document_id)
@@ -47,7 +66,7 @@ async def upload(
     collection: str = Form(settings.default_collection),
     session: Session = Depends(get_session),
 ):
-    data = await file.read()
+    data = await _read_capped(file)
     doc = Document(
         collection=collection,
         filename=file.filename or "upload",
@@ -72,7 +91,7 @@ async def attach(
     """Ephemeral "talk to this doc": ingest a file inline (synchronously) into a
     per-conversation collection so the very next chat message can retrieve it.
     """
-    data = await file.read()
+    data = await _read_capped(file)
     # Chroma requires collection names to start/end alphanumeric, so no "__" prefix.
     collection = f"chat-{conversation_id}"
     doc = Document(
