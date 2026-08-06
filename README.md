@@ -142,8 +142,26 @@ documents. Both implement the same `VectorStore` interface in `backend/app/servi
 
 ```bash
 cd backend
-pytest          # chunking + RRF fusion unit tests (no external services needed)
+pytest          # unit tests for chunking, RRF fusion, MMR, retrieval, memory,
+                # agent, web search, and the retrieval-eval metrics/harness
 ```
+
+## Retrieval evaluation
+
+A retrieval-quality harness scores whether the pipeline actually surfaces the
+right document. It ships a small labelled corpus (`backend/eval/`) and reports
+hit-rate, MRR, recall, precision, MAP and nDCG.
+
+```bash
+cd backend
+python -m scripts.eval_retrieval             # ingest eval corpus, score retrieval
+python -m scripts.eval_retrieval --k 3 --json report.json
+```
+
+The metrics (`app/eval/metrics.py`) and the aggregation harness
+(`app/eval/harness.py`) are pure and covered by `pytest`; the runner exercises
+the live embedder + vector store. Point it at your own `--corpus`/`--dataset` to
+guard your knowledge base against retrieval regressions.
 
 ## Configuration
 
@@ -151,5 +169,5 @@ All settings live in `.env` (see `.env.example`) and map to `backend/app/config.
 
 ## Roadmap / ideas (deferred)
 
-OCR for scanned PDFs · multi-modal (image) RAG · retrieval-quality analytics dashboard ·
-streaming tool-call traces in the UI · single-user PIN auth.
+OCR for scanned PDFs · multi-modal (image) RAG · a UI dashboard over the
+retrieval-eval metrics · streaming tool-call traces in the UI · single-user PIN auth.
