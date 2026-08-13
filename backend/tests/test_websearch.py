@@ -72,6 +72,39 @@ async def test_empty_provider_results_yield_no_sources(monkeypatch):
     assert await websearch.search("q") == []
 
 
+async def test_ssrf_guard_rejects_internal_and_nonhttp(monkeypatch):
+    from app.services.websearch import _is_safe_public_url
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        table = {
+            "metadata.internal": "169.254.169.254",
+            "localhost": "127.0.0.1",
+            "intranet": "10.1.2.3",
+            "public.example": "93.184.216.34",
+        }
+        ip = table.get(host)
+        if ip is None:
+            raise OSError("no such host")
+        return [(0, 1, 6, "", (ip, port))]
+
+    monkeypatch.setattr("app.services.websearch.socket.getaddrinfo", fake_getaddrinfo)
+    assert await _is_safe_public_url("http://169.254.169.254/latest/meta-data") is False
+    assert await _is_safe_public_url("http://localhost:8000/") is False
+    assert await _is_safe_public_url("http://intranet/admin") is False
+    assert await _is_safe_public_url("file:///etc/passwd") is False
+    assert await _is_safe_public_url("https://public.example/article") is True
+
+
+async def test_extract_skips_unsafe_url(monkeypatch):
+    from app.services import websearch
+
+    async def deny(url):
+        return False
+
+    monkeypatch.setattr(websearch, "_is_safe_public_url", deny)
+    assert await websearch._extract("http://169.254.169.254/") == ""
+
+
 async def test_ids_are_url_stable_across_calls(monkeypatch):
     # The agent can call web_search multiple times per turn and dedups Sources by
     # id. Ids must be derived from the URL so results from a second call don't
