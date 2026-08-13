@@ -4,11 +4,39 @@ flow through the same context builder as document RAG.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import socket
+from urllib.parse import urlparse
 
 import httpx
 
 from app.config import settings
 from app.schemas import Source
+
+
+async def _is_safe_public_url(url: str) -> bool:
+    """SSRF guard: allow only http(s) URLs whose host resolves entirely to
+    global (public) addresses.
+
+    Result URLs come from an external search provider and are fetched
+    server-side, so without this a poisoned result (or a compromised SearXNG
+    instance) could steer the fetch at cloud-metadata (169.254.169.254),
+    loopback, or RFC-1918 internal services. Every resolved address must be
+    global — a host that resolves to even one private IP is rejected.
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        infos = await asyncio.to_thread(
+            socket.getaddrinfo, parsed.hostname, port, 0, socket.SOCK_STREAM
+        )
+        if not infos:
+            return False
+        return all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+    except Exception:
+        return False
 
 
 async def _ddg_results(query: str, max_results: int) -> list[dict]:
@@ -33,8 +61,12 @@ async def _searxng_results(query: str, max_results: int) -> list[dict]:
 
 
 async def _extract(url: str) -> str:
+    if not await _is_safe_public_url(url):
+        return ""
     try:
-        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+        # follow_redirects is disabled: an allowed public URL could otherwise
+        # 3xx-redirect to an internal address, bypassing the pre-fetch guard.
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
             r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
             r.raise_for_status()
             html = r.text
