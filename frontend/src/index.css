@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+/* Keep the existing JS config (custom colors + class dark mode) under v4. */
+@config "../tailwind.config.js";
 
 :root {
   --bg: 248 249 251;
