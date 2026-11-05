@@ -68,8 +68,11 @@ jobs:
           CHROMA_DIR: ${{ runner.temp }}/eval-data/chroma
           DATABASE_URL: sqlite:///${{ runner.temp }}/eval-data/app.db
         run: |
+          # Gates sit just below the measured baseline (README -> Benchmark):
+          # one more missed document fails the job.
           python -m scripts.eval_retrieval --k 1,3,5 \
-            --json eval-report.json --markdown eval-report.md
+            --json eval-report.json --markdown eval-report.md \
+            --min-recall 0.95 --min-context-recall 0.90
       - name: Publish summary
         if: always()
         run: |

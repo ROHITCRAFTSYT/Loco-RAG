@@ -87,9 +87,9 @@ Key seams: `services/llm` (provider abstraction), `services/vectorstore` (Chroma
 | Failure | What the user gets |
 |---|---|
 | Ollama / LM Studio down, model not pulled, timeout | SSE `error` naming the provider, URL and fix (e.g. `ollama pull llama3.1`); `502` on JSON endpoints |
-| Embedding / vector store / rerank fails during chat | Turn continues without documents; SSE `warning`, and the model is told to say it couldn't consult them |
+| Embedding / vector store / rerank fails during chat | Turn continues without documents; SSE `warning` shown as a banner on the answer (persisted, so it survives a reload), and the model is told to say it couldn't consult them |
 | Same, on `/api/search/documents` | `503` with the failing `stage` |
-| Web search rate-limited / offline | Turn continues; SSE `warning` |
+| Web search rate-limited / offline | Turn continues; SSE `warning` banner |
 | Agent tool throws | The model sees `Tool error: …` and answers without it |
 | Bad collection name on upload | `422` up front (not a silent background failure) |
 | Anything unexpected | JSON `500` with a `request_id` matching the logs; no internals leaked |
@@ -204,7 +204,27 @@ script can gate CI.
 
 ### Benchmark
 
-<!-- BENCHMARK -->
+Default configuration: hybrid dense + BM25 with RRF, no rerank, no MMR, `BAAI/bge-small-en-v1.5`
+via fastembed, Chroma, `RERANK_TOP_N=4`. Measured by the CI `eval` job on a GitHub-hosted
+`ubuntu-latest` runner (2026-11-05), 24 queries:
+
+| Metric | @1 | @3 | @5 |
+|---|---|---|---|
+| recall | 0.875 | 0.979 | 0.979 |
+| hit-rate | 0.917 | 1.000 | 1.000 |
+| MRR | 0.958 | 0.958 | 0.958 |
+| nDCG | 0.917 | 0.956 | 0.956 |
+
+| Metric | Value |
+|---|---|
+| context recall (top-4 chunks) | 0.979 |
+| retrieval latency p50 (CPU, in-process) | 16 ms |
+| answer faithfulness | not measured: CI has no LLM. Run `--answers` locally |
+
+Read these with care. The corpus and questions are small and were written by the same author,
+so near-ceiling scores show that the pipeline works end to end and give a regression baseline. They
+are **not** evidence of quality on your documents. The one recall@5 miss is a two-document question
+where only one document was retrieved. CI fails if recall@5 drops below 0.95 or context recall below 0.90.
 
 ## Production notes
 
