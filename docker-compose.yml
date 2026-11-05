@@ -9,7 +9,9 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       VECTOR_BACKEND: ${VECTOR_BACKEND:-chroma}
+      # Keep 1 with the embedded Chroma store (not process-safe); see backend/Dockerfile.
       UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
       DATA_DIR: /data
       DATABASE_URL: sqlite:////data/app.db
       CHROMA_DIR: /data/chroma
@@ -21,11 +23,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      # python, not curl: the runtime image ships no curl.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   frontend:
     build: ./frontend
