@@ -23,10 +23,12 @@ _METRICS = ("hit_rate", "mrr", "recall", "precision", "map", "ndcg")
 
 @dataclass
 class EvalCase:
-    """One labelled question: the query and the ids that should be retrieved."""
+    """One labelled question: the query, the ids that should be retrieved, and
+    optionally a short reference answer (used for context recall)."""
 
     query: str
     relevant: list[str]
+    reference: str | None = None
 
 
 @dataclass
@@ -81,9 +83,21 @@ def score_case(query: str, relevant: Sequence[str], ranked: Sequence[str], k: in
 
 def evaluate(cases: Sequence[EvalCase], retrieve: Retriever, k: int = 5) -> EvalReport:
     """Run ``retrieve`` over every case and aggregate the metrics as means."""
+    return _score(cases, [list(retrieve(c.query)) for c in cases], k)
+
+
+def evaluate_multi(
+    cases: Sequence[EvalCase], retrieve: Retriever, ks: Sequence[int]
+) -> dict[int, EvalReport]:
+    """Like :func:`evaluate` at several cut-offs, calling ``retrieve`` once per
+    case (retrieval is the expensive part; scoring is free)."""
+    rankings = [list(retrieve(c.query)) for c in cases]
+    return {k: _score(cases, rankings, k) for k in ks}
+
+
+def _score(cases: Sequence[EvalCase], rankings: Sequence[list[str]], k: int) -> EvalReport:
     results: list[CaseResult] = []
-    for case in cases:
-        ranked = list(retrieve(case.query))
+    for case, ranked in zip(cases, rankings):
         results.append(
             CaseResult(
                 query=case.query,
@@ -101,6 +115,12 @@ def evaluate(cases: Sequence[EvalCase], retrieve: Retriever, k: int = 5) -> Eval
 
 
 def load_cases(path: str | Path) -> list[EvalCase]:
-    """Load eval cases from a JSON file of ``[{"query": ..., "relevant": [...]}, ...]``."""
+    """Load eval cases from a JSON file of
+    ``[{"query": ..., "relevant": [...], "reference": "..."?}, ...]``."""
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    return [EvalCase(query=item["query"], relevant=list(item["relevant"])) for item in raw]
+    return [
+        EvalCase(
+            query=item["query"], relevant=list(item["relevant"]), reference=item.get("reference")
+        )
+        for item in raw
+    ]

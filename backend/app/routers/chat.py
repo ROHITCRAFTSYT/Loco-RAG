@@ -3,7 +3,9 @@ assistant reply over SSE. Persists user and assistant messages.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import time
 from typing import Any
 
@@ -16,9 +18,17 @@ from app.db import get_session
 from app.models import Conversation, Message
 from app.schemas import ChatRequest, Source
 from app.services import agent, memory, rag, websearch
-from app.services.llm import get_provider
+from app.services.llm import LLMError, get_provider
 
 router = APIRouter(prefix="/api", tags=["chat"])
+logger = logging.getLogger(__name__)
+
+# Injected when a retrieval source fails so the model tells the user, instead of
+# silently answering as if their documents had been consulted.
+_DEGRADED_NOTE = (
+    "Note: {warning} Tell the user briefly that you could not consult it, then "
+    "answer as best you can without it."
+)
 
 
 def _history(session: Session, conversation_id: str) -> list[dict[str, Any]]:
@@ -28,8 +38,14 @@ def _history(session: Session, conversation_id: str) -> list[dict[str, Any]]:
     return [{"role": m.role, "content": m.content} for m in rows]
 
 
-async def _gather_sources(req: ChatRequest, conv: Conversation, query: str) -> list[Source]:
+async def _gather_sources(
+    req: ChatRequest, conv: Conversation, query: str
+) -> tuple[list[Source], list[str]]:
+    """Run document retrieval and/or web search. Returns ``(sources, warnings)``:
+    a failing source is logged and reported as a warning rather than failing
+    the whole chat turn."""
     sources: list[Source] = []
+    warnings: list[str] = []
     rag_on = req.rag_enabled if req.rag_enabled is not None else conv.rag_enabled
     web_on = req.web_search if req.web_search is not None else conv.web_search
 
@@ -42,10 +58,22 @@ async def _gather_sources(req: ChatRequest, conv: Conversation, query: str) -> l
         collections += req.attachment_collections
 
     if collections:
-        sources += rag.retrieve(query, collections)
+        try:
+            # Embedding + BM25 are CPU-bound and synchronous: keep them off the
+            # event loop so other requests' token streams don't stall.
+            sources += await asyncio.to_thread(rag.retrieve, query, collections)
+        except rag.RetrievalError as exc:
+            detail = f"{exc.stage} failed: {exc.cause}" if exc.cause else f"{exc.stage} failed"
+            warnings.append(f"Document search was unavailable for this message ({detail}).")
     if web_on:
-        sources += await websearch.search(query)
-    return sources
+        try:
+            sources += await websearch.search(query)
+        except Exception as exc:  # provider rate limits / network errors
+            logger.warning("web search failed", extra={"error": f"{type(exc).__name__}: {exc}"})
+            warnings.append(
+                f"Web search was unavailable for this message ({type(exc).__name__})."
+            )
+    return sources, warnings
 
 
 @router.post("/conversations/{conversation_id}/chat")
@@ -56,13 +84,17 @@ async def chat(
     if not conv:
         raise HTTPException(404, "Conversation not found")
 
+    model = req.model or conv.model or settings.default_model
+    provider = req.provider or conv.provider or settings.default_provider
+    try:
+        llm = get_provider(provider)
+    except ValueError as exc:  # validate before persisting anything
+        raise HTTPException(400, str(exc)) from exc
+
     # Persist the user message immediately.
     user_msg = Message(conversation_id=conversation_id, role="user", content=req.content)
     session.add(user_msg)
     session.commit()
-
-    model = req.model or conv.model or settings.default_model
-    provider = req.provider or conv.provider or settings.default_provider
     temperature = req.temperature if req.temperature is not None else conv.temperature
 
     history = _history(session, conversation_id)
@@ -77,6 +109,7 @@ async def chat(
     if summary:
         messages.append({"role": "system", "content": f"Conversation summary so far:\n{summary}"})
 
+    warnings: list[str] = []
     if req.agent_mode:
         # Let the model decide which tools to call; it accumulates its own sources.
         default_collection = req.collection or conv.collection or settings.default_collection
@@ -89,17 +122,21 @@ async def chat(
         messages = agent_messages
     else:
         # Deterministic retrieval (RAG + web) unified through the context builder.
-        sources = await _gather_sources(req, conv, req.content)
+        sources, warnings = await _gather_sources(req, conv, req.content)
         if sources:
             messages.append({"role": "system", "content": rag.build_context(sources)})
+        for warning in warnings:
+            messages.append(
+                {"role": "system", "content": _DEGRADED_NOTE.format(warning=warning)}
+            )
         messages += recent
-
-    llm = get_provider(provider)
 
     async def event_gen():
         # Emit sources first so the UI can render the citation panel.
         if sources:
             yield {"event": "sources", "data": json.dumps([s.model_dump() for s in sources])}
+        for warning in warnings:
+            yield {"event": "warning", "data": warning}
 
         acc = ""
         start = time.perf_counter()
@@ -117,8 +154,12 @@ async def chat(
                     completion_tokens = chunk.completion_tokens
                 if chunk.done:
                     break
-        except Exception as exc:  # surface provider errors to the client
+        except LLMError as exc:  # already logged with provider/model context
             yield {"event": "error", "data": str(exc)}
+            return
+        except Exception as exc:  # anything else: log the traceback, keep the message generic
+            logger.exception("chat stream failed", extra={"model": model, "provider": provider})
+            yield {"event": "error", "data": f"Generation failed ({type(exc).__name__})"}
             return
 
         elapsed = max(time.perf_counter() - start, 1e-6)
@@ -128,6 +169,18 @@ async def chat(
             "completion_tokens": completion_tokens,
             "tps": tps,
         }
+        logger.info(
+            "chat turn complete",
+            extra={
+                "conversation_id": conversation_id,
+                "model": model,
+                "provider": provider,
+                "sources": len(sources),
+                "degraded": bool(warnings),
+                "completion_tokens": completion_tokens,
+                "tps": tps,
+            },
+        )
 
         # Persist the assistant message with sources + usage.
         with get_session_ctx() as s2:
@@ -136,7 +189,9 @@ async def chat(
                 role="assistant",
                 content=acc,
                 sources=json.dumps([s.model_dump() for s in sources]) if sources else None,
-                usage=json.dumps(usage),
+                # Warnings ride in the usage JSON (no schema migration); the
+                # messages API lifts them out into a top-level "warnings" field.
+                usage=json.dumps({**usage, "warnings": warnings} if warnings else usage),
             )
             s2.add(assistant)
             conv2 = s2.get(Conversation, conversation_id)

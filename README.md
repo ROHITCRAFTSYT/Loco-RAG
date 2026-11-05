@@ -75,6 +75,25 @@ React (Vite) ──SSE──> FastAPI ──> Ollama / LM Studio   (chat, OpenAI
 Key seams: `services/llm` (provider abstraction), `services/vectorstore` (Chroma/LanceDB factory),
 `services/rag.py` (hybrid retrieval + the **one** context-builder shared by RAG, web, and memory).
 
+**What happens on a chat turn** (`routers/chat.py`):
+
+1. Validate the provider, persist the user message, summarize old turns if over budget (`services/memory.py`).
+2. Gather context: hybrid retrieval over the selected collection(s) (run in a worker thread so it
+   never blocks other streams) and/or web search — or, in agent mode, let the model call those as tools.
+3. Stream the answer over SSE: `sources` → `warning`* → `token`… → `usage` → `done` (or `error`).
+
+**Failure behaviour.** Every model and vector-store call is wrapped:
+
+| Failure | What the user gets |
+|---|---|
+| Ollama / LM Studio down, model not pulled, timeout | SSE `error` naming the provider, URL and fix (e.g. `ollama pull llama3.1`); `502` on JSON endpoints |
+| Embedding / vector store / rerank fails during chat | Turn continues without documents; SSE `warning` shown as a banner on the answer (persisted, so it survives a reload), and the model is told to say it couldn't consult them |
+| Same, on `/api/search/documents` | `503` with the failing `stage` |
+| Web search rate-limited / offline | Turn continues; SSE `warning` banner |
+| Agent tool throws | The model sees `Tool error: …` and answers without it |
+| Bad collection name on upload | `422` up front (not a silent background failure) |
+| Anything unexpected | JSON `500` with a `request_id` matching the logs; no internals leaked |
+
 <p align="center">
   <img src="docs/rag-pipeline.svg" alt="RAG pipeline: documents → parse → chunk → embed → vector store (ingest); user query → dense search + BM25 → RRF fusion → rerank → context → LLM answer with citations (retrieve)" width="900">
 </p>
@@ -94,6 +113,11 @@ Then:
 cp .env.example .env
 docker compose up --build
 ```
+
+The backend image is multi-stage (no compilers at runtime), installs from the hash-pinned lock,
+runs as a non-root user, and **bakes the tokenizer and default embedding model into the image** so
+the container starts and answers with no internet access (CI boots it with `--network none` to
+check). Build with `--build-arg PRELOAD_EMBED_MODEL=0` if you use `EMBED_PROVIDER=ollama`.
 
 - UI:  http://localhost:5173
 - API docs: http://localhost:8000/docs
@@ -121,7 +145,8 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate        # Windows
 source .venv/bin/activate     # macOS / Linux
-pip install -e ".[dev]"
+pip install -r requirements-dev.txt && pip install --no-deps -e .   # exact pinned versions
+# or: pip install -e ".[dev]"                                       # latest within pyproject ranges
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -142,26 +167,84 @@ documents. Both implement the same `VectorStore` interface in `backend/app/servi
 
 ```bash
 cd backend
-pytest          # unit tests for chunking, RRF fusion, MMR, retrieval, memory,
-                # agent, web search, and the retrieval-eval metrics/harness
+pytest --cov          # 151 tests, ~87% line coverage; CI fails under 85%
 ```
 
-## Retrieval evaluation
+Unit tests cover chunking, RRF, MMR, memory, the agent loop, web search and its SSRF guard, config
+validation, LLM error translation (via `httpx.MockTransport`), logging, and the eval metrics.
+Integration tests drive the real FastAPI app (upload → ingest → search → delete, chat degradation
+paths) and run a shared contract suite against **both** real embedded vector stores, Chroma and
+LanceDB. Only the embedder and the LLM are faked, so the suite needs no model downloads.
 
-A retrieval-quality harness scores whether the pipeline actually surfaces the
-right document. It ships a small labelled corpus (`backend/eval/`) and reports
-hit-rate, MRR, recall, precision, MAP and nDCG.
+## Retrieval & answer evaluation
+
+`backend/eval/` holds a small golden set: an 11-document corpus about this app (including
+near-neighbour documents, such as MMR next to hybrid retrieval and page-fetch safety next to web
+search, so retrieval has something to get wrong) and 24 questions, each labelled with its relevant
+document(s) and a short reference answer. Three questions need two documents.
 
 ```bash
 cd backend
-python -m scripts.eval_retrieval             # ingest eval corpus, score retrieval
-python -m scripts.eval_retrieval --k 3 --json report.json
+python -m scripts.eval_retrieval                       # retrieval + context recall (no LLM)
+python -m scripts.eval_retrieval --answers --model llama3.1   # + answer faithfulness (needs Ollama/LM Studio)
+python -m scripts.eval_retrieval --min-recall 0.9 --min-context-recall 0.8 --json report.json
 ```
 
-The metrics (`app/eval/metrics.py`) and the aggregation harness
-(`app/eval/harness.py`) are pure and covered by `pytest`; the runner exercises
-the live embedder + vector store. Point it at your own `--corpus`/`--dataset` to
-guard your knowledge base against retrieval regressions.
+| Metric | Measures | Needs LLM |
+|---|---|---|
+| recall@k, hit-rate, MRR, nDCG | does retrieval rank the right *documents* in the top k | no |
+| context recall | share of each reference answer's sentences supported by the top `RERANK_TOP_N` chunks (what the model actually sees) | no |
+| answer faithfulness | share of the generated answer's sentences supported by that same context | yes |
+
+Faithfulness and context recall are **lexical** proxies (`app/eval/faithfulness.py`): a sentence counts
+as supported when ≥60% of its content words appear in one retrieved passage. They under-credit
+paraphrase and can't detect negation, so use them to catch regressions on this fixed set, not as
+absolute truth. For a stronger signal, swap in an LLM judge. `--min-*` flags exit non-zero, so the
+script can gate CI.
+
+### Benchmark
+
+Default configuration: hybrid dense + BM25 with RRF, no rerank, no MMR, `BAAI/bge-small-en-v1.5`
+via fastembed, Chroma, `RERANK_TOP_N=4`. Measured by the CI `eval` job on a GitHub-hosted
+`ubuntu-latest` runner (2026-11-05), 24 queries:
+
+| Metric | @1 | @3 | @5 |
+|---|---|---|---|
+| recall | 0.875 | 0.979 | 0.979 |
+| hit-rate | 0.917 | 1.000 | 1.000 |
+| MRR | 0.958 | 0.958 | 0.958 |
+| nDCG | 0.917 | 0.956 | 0.956 |
+
+| Metric | Value |
+|---|---|
+| context recall (top-4 chunks) | 0.979 |
+| retrieval latency p50 (CPU, in-process) | 16 ms |
+| answer faithfulness | not measured: CI has no LLM. Run `--answers` locally |
+
+Read these with care. The corpus and questions are small and were written by the same author,
+so near-ceiling scores show that the pipeline works end to end and give a regression baseline. They
+are **not** evidence of quality on your documents. The one recall@5 miss is a two-document question
+where only one document was retrieved. CI fails if recall@5 drops below 0.95 or context recall below 0.90.
+
+## Production notes
+
+- **Config validation.** `app/config.py` checks every setting at startup: enum values
+  (`VECTOR_BACKEND`, `EMBED_PROVIDER`, `DEFAULT_PROVIDER`, `WEBSEARCH_PROVIDER`, `LOG_*`), numeric ranges,
+  http(s) base URLs, `CHUNK_OVERLAP_TOKENS < CHUNK_SIZE_TOKENS` and `RERANK_TOP_N ≤ RETRIEVE_TOP_K`. A typo
+  stops the process with a message naming the setting. Previously `VECTOR_BACKEND=lance` silently ran Chroma.
+- **Structured logging.** `LOG_FORMAT=json` (the Docker default) writes one JSON object per line
+  with `ts`, `level`, `logger`, `msg`, `request_id` and structured fields (`path`, `status`, `ms`, `model`,
+  `stage`, …). Every line logged while handling a request carries that request's id, which is also
+  returned as `X-Request-ID` (a sane incoming `X-Request-ID` from a proxy is reused).
+- **One worker with Chroma.** Chroma's embedded `PersistentClient` is thread-safe but
+  [not process-safe](https://cookbook.chromadb.dev/core/system_constraints/), so keep `UVICORN_WORKERS=1`
+  with the default store. To scale out, run a Chroma server.
+- **Pinned dependencies.** `backend/requirements.txt` / `requirements-dev.txt` are hash-pinned,
+  cross-platform locks generated by `uv` (Python 3.11). `pyproject.toml` keeps the version ranges. CI runs
+  `pip check` to make sure the lock still satisfies them. To regenerate, run the command in each file's header.
+- **CI** (`.github/workflows/ci.yml`, all actions pinned to commit SHAs): lint, tests with a coverage
+  floor, the retrieval eval against the real embedder and Chroma (results in the job summary), the frontend
+  build, and a Docker build plus an offline boot smoke test of the backend image.
 
 ## Configuration
 

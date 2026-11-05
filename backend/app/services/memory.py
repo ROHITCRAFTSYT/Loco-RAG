@@ -5,12 +5,15 @@ budget, summarize everything older into a compact "memory" system note.
 """
 from __future__ import annotations
 
+import logging
+
 import tiktoken
 
 from app.config import settings
 from app.services.llm import get_provider
 
 _enc = tiktoken.get_encoding("cl100k_base")
+logger = logging.getLogger(__name__)
 
 KEEP_RECENT = 6  # always keep this many most-recent messages verbatim
 
@@ -43,7 +46,9 @@ async def maybe_summarize(
     ]
     try:
         summary = await get_provider(provider).complete(prompt, model=model, temperature=0.2)
-    except Exception:
+    except Exception as exc:
         # On any failure, fall back to recent-only to avoid blowing the context window.
+        logger.warning("memory summarization failed; sending recent turns only",
+                       extra={"error": str(exc)})
         return None, recent
     return summary, recent

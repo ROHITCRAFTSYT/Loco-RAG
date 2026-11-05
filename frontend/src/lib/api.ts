@@ -93,6 +93,7 @@ export interface StreamHandlers {
   onSources?: (s: Source[]) => void;
   onToken: (t: string) => void;
   onUsage?: (u: Usage) => void;
+  onWarning?: (w: string) => void;
   onError?: (e: string) => void;
   onDone: () => void;
 }
@@ -119,6 +120,9 @@ export function streamChat(
           break;
         case "usage":
           handlers.onUsage?.(JSON.parse(ev.data));
+          break;
+        case "warning":
+          handlers.onWarning?.(ev.data);
           break;
         case "error":
           handlers.onError?.(ev.data);

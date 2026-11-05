@@ -6,6 +6,6 @@ used only for richer model discovery (capabilities, families).
 """
 from __future__ import annotations
 
-from app.services.llm.base import LLMProvider, get_provider
+from app.services.llm.base import LLMError, LLMProvider, get_provider
 
-__all__ = ["LLMProvider", "get_provider"]
+__all__ = ["LLMError", "LLMProvider", "get_provider"]

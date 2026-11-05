@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Heuristic: model name substrings that indicate vision capability.
 _VISION_HINTS = ("llava", "vision", "bakllava", "moondream", "minicpm-v", "qwen2-vl", "llama3.2-vision")
@@ -22,6 +26,43 @@ class StreamChunk:
     completion_tokens: int | None = None
 
 
+class LLMError(RuntimeError):
+    """A model call failed. ``str(exc)`` is safe to show to the user: it names
+    the provider and says what to check, instead of a bare httpx message such as
+    "All connection attempts failed"."""
+
+    def __init__(self, message: str, *, provider: str, status_code: int | None = None):
+        super().__init__(message)
+        self.provider = provider
+        self.status_code = status_code
+
+
+def _translate(exc: Exception, provider: str, base_url: str, model: str | None) -> LLMError:
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 404 and model:
+            msg = (
+                f"{provider} returned 404 for model '{model}'. Is it installed? "
+                f"(for Ollama: `ollama pull {model}`)"
+            )
+        else:
+            msg = f"{provider} returned HTTP {code} at {base_url}"
+        return LLMError(msg, provider=provider, status_code=code)
+    if isinstance(exc, httpx.TimeoutException):
+        return LLMError(
+            f"{provider} at {base_url} timed out (REQUEST_TIMEOUT={settings.request_timeout}s)",
+            provider=provider,
+        )
+    if isinstance(exc, httpx.TransportError):
+        return LLMError(
+            f"Cannot reach {provider} at {base_url}. Is it running? ({type(exc).__name__})",
+            provider=provider,
+        )
+    if isinstance(exc, (KeyError, IndexError, TypeError, ValueError)):
+        return LLMError(f"{provider} returned an unexpected response shape", provider=provider)
+    return LLMError(f"{provider} call failed: {exc}", provider=provider)
+
+
 class LLMProvider:
     """Thin async wrapper over an OpenAI-compatible /v1 endpoint."""
 
@@ -29,6 +70,21 @@ class LLMProvider:
         self.name = name
         self.base_url = base_url.rstrip("/")
         self.native_ollama = native_ollama
+
+    @asynccontextmanager
+    async def _errors(self, op: str, model: str | None = None):
+        """Translate transport/HTTP/shape failures into :class:`LLMError`."""
+        try:
+            yield
+        except LLMError:
+            raise
+        except Exception as exc:
+            err = _translate(exc, self.name, self.base_url, model)
+            logger.warning(
+                "llm call failed",
+                extra={"provider": self.name, "op": op, "model": model, "error": str(err)},
+            )
+            raise err from exc
 
     @property
     def _v1(self) -> str:
@@ -38,7 +94,7 @@ class LLMProvider:
         return self.base_url
 
     async def list_models(self) -> list[dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with self._errors("list_models"), httpx.AsyncClient(timeout=15.0) as client:
             if self.native_ollama:
                 r = await client.get(f"{self.base_url}/api/tags")
                 r.raise_for_status()
@@ -82,7 +138,9 @@ class LLMProvider:
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
+        async with self._errors("stream_chat", model), httpx.AsyncClient(
+            timeout=settings.request_timeout
+        ) as client:
             async with client.stream(
                 "POST", f"{self._v1}/chat/completions", json=payload
             ) as resp:
@@ -128,7 +186,9 @@ class LLMProvider:
             "stream": False,
             "temperature": temperature,
         }
-        async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
+        async with self._errors("chat_with_tools", model), httpx.AsyncClient(
+            timeout=settings.request_timeout
+        ) as client:
             r = await client.post(f"{self._v1}/chat/completions", json=payload)
             r.raise_for_status()
             return r.json()["choices"][0]["message"]
@@ -143,7 +203,9 @@ class LLMProvider:
             "stream": False,
             "temperature": temperature,
         }
-        async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
+        async with self._errors("complete", model), httpx.AsyncClient(
+            timeout=settings.request_timeout
+        ) as client:
             r = await client.post(f"{self._v1}/chat/completions", json=payload)
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]

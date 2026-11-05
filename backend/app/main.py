@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -12,23 +13,30 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.db import init_db
+from app.logging_config import configure_logging, request_id_var
 from app.routers import chat, conversations, documents, models, prompts, search, voice
+from app.services.llm import LLMError
+from app.services.rag import RetrievalError
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+configure_logging(settings.log_level, settings.log_format)
 logger = logging.getLogger("app")
+
+# Accept a caller-supplied X-Request-ID (e.g. from a reverse proxy) only if it is
+# short and boring, so it can't be used to inject junk into the logs.
+_RID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     logger.info(
-        "startup vector_backend=%s embed_provider=%s default_provider=%s",
-        settings.vector_backend,
-        settings.embed_provider,
-        settings.default_provider,
+        "startup",
+        extra={
+            "vector_backend": settings.vector_backend,
+            "embed_provider": settings.embed_provider,
+            "default_provider": settings.default_provider,
+            "default_model": settings.default_model,
+        },
     )
     yield
 
@@ -46,25 +54,54 @@ app.add_middleware(
 
 @app.middleware("http")
 async def request_logger(request: Request, call_next):
-    """Attach a request id and log latency for every request."""
-    request_id = uuid4().hex[:8]
+    """Attach a request id (echoed as X-Request-ID and stamped on every log line
+    emitted while handling the request) and log method, path, status, latency."""
+    incoming = request.headers.get("x-request-id", "")
+    request_id = incoming if _RID_RE.match(incoming) else uuid4().hex[:12]
+    token = request_id_var.set(request_id)
     start = time.perf_counter()
     try:
-        response = await call_next(request)
-    except Exception:  # noqa: BLE001 - convert unhandled errors to JSON 500
-        logger.exception("unhandled error rid=%s %s %s", request_id, request.method, request.url.path)
-        return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    response.headers["X-Request-ID"] = request_id
-    logger.info(
-        "rid=%s %s %s -> %s %.1fms",
-        request_id,
-        request.method,
-        request.url.path,
-        response.status_code,
-        elapsed_ms,
+        try:
+            response = await call_next(request)
+        except Exception:  # convert unhandled errors to a JSON 500 with the id
+            logger.exception(
+                "unhandled error", extra={"method": request.method, "path": request.url.path}
+            )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error", "request_id": request_id},
+                headers={"X-Request-ID": request_id},
+            )
+        response.headers["X-Request-ID"] = request_id
+        logger.info(
+            "request",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "ms": round((time.perf_counter() - start) * 1000, 1),
+            },
+        )
+        return response
+    finally:
+        request_id_var.reset(token)
+
+
+@app.exception_handler(LLMError)
+async def _llm_error(request: Request, exc: LLMError):
+    # The local model runtime is an upstream dependency: 502, with an actionable message.
+    return JSONResponse(
+        status_code=502,
+        content={"detail": str(exc), "provider": exc.provider, "request_id": request_id_var.get()},
     )
-    return response
+
+
+@app.exception_handler(RetrievalError)
+async def _retrieval_error(request: Request, exc: RetrievalError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc), "stage": exc.stage, "request_id": request_id_var.get()},
+    )
 
 
 app.include_router(conversations.router)

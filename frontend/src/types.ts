@@ -39,6 +39,8 @@ export interface Message {
   content: string;
   sources?: Source[] | null;
   usage?: Usage | null;
+  // Degradation notices from the backend (e.g. document search unavailable).
+  warnings?: string[] | null;
   created_at?: string;
   // client-only flag for the in-flight streaming message
   streaming?: boolean;

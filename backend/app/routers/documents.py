@@ -1,6 +1,9 @@
 """Document upload, ingestion, listing, and deletion. Manages collections."""
 from __future__ import annotations
 
+import logging
+import re
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlmodel import Session, select
 
@@ -12,6 +15,25 @@ from app.services import ingest
 from app.services.vectorstore import get_vectorstore
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+logger = logging.getLogger(__name__)
+
+# The intersection of Chroma's and LanceDB's naming rules: 3-63 chars of
+# [A-Za-z0-9._-], starting and ending alphanumeric. Checked up front so a bad
+# name is a 422 at upload time rather than an "error" status after background
+# ingestion has already accepted the file.
+_COLLECTION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,61}[A-Za-z0-9]$")
+
+
+def validate_collection_name(name: str) -> str:
+    if not _COLLECTION_RE.match(name) or ".." in name:
+        raise HTTPException(
+            422,
+            "Collection names must be 3-63 characters of letters, digits, '.', '_' or '-', "
+            "starting and ending with a letter or digit",
+        )
+    if name.startswith("chat-"):
+        raise HTTPException(422, "The 'chat-' prefix is reserved for per-conversation attachments")
+    return name
 
 
 async def _read_capped(file: UploadFile) -> bytes:
@@ -53,10 +75,18 @@ def _process(document_id: str, collection: str, filename: str, content_type: str
             doc.status = "ready" if count else "error"
             doc.error = None if count else "No extractable text"
         except Exception as exc:  # pragma: no cover - depends on file content
+            logger.warning(
+                "ingest failed",
+                extra={"document_id": document_id, "collection": collection, "error": str(exc)},
+            )
             doc.status = "error"
             doc.error = str(exc)
         session.add(doc)
         session.commit()
+        logger.info(
+            "ingested",
+            extra={"document_id": document_id, "status": doc.status, "chunks": doc.chunk_count},
+        )
 
 
 @router.post("/upload", response_model=IngestResponse)
@@ -66,6 +96,7 @@ async def upload(
     collection: str = Form(settings.default_collection),
     session: Session = Depends(get_session),
 ):
+    validate_collection_name(collection)
     data = await _read_capped(file)
     doc = Document(
         collection=collection,
@@ -116,6 +147,7 @@ async def attach(
         doc.status = "ready" if count else "error"
         doc.error = None if count else "No extractable text"
     except Exception as exc:  # pragma: no cover - depends on file content
+        logger.warning("attach ingest failed", extra={"document_id": doc.id, "error": str(exc)})
         doc.status = "error"
         doc.error = str(exc)
     session.add(doc)
