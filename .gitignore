@@ -22,3 +22,8 @@ data/
 .vscode/
 .idea/
 .DS_Store
+
+# Test / eval output
+.coverage
+coverage.xml
+eval-report.*
