@@ -3,8 +3,10 @@ unified context builder shared by document RAG, web search, and memory.
 """
 from __future__ import annotations
 
+import logging
 import math
 import re
+import time
 from functools import lru_cache
 
 from app.config import settings
@@ -14,6 +16,32 @@ from app.services.vectorstore import get_vectorstore
 from app.services.vectorstore.base import QueryHit
 
 _TOKEN_RE = re.compile(r"\w+")
+
+logger = logging.getLogger(__name__)
+
+
+class RetrievalError(RuntimeError):
+    """Embedding, vector-store or rerank failure during retrieval. ``stage``
+    names the failing step; ``str(exc)`` is safe to show to the user."""
+
+    def __init__(self, message: str, *, stage: str):
+        super().__init__(message)
+        self.stage = stage
+
+
+def _guard(stage: str, fn, *args):
+    try:
+        return fn(*args)
+    except RetrievalError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            "retrieval stage failed",
+            extra={"stage": stage, "error": f"{type(exc).__name__}: {exc}"},
+        )
+        raise RetrievalError(
+            f"Document search failed during {stage} ({type(exc).__name__}: {exc})", stage=stage
+        ) from exc
 
 
 def _tokenize(text: str) -> list[str]:
@@ -125,15 +153,16 @@ def retrieve(
     if not collections:
         collections = [settings.default_collection]
 
+    started = time.perf_counter()
     top_k = settings.retrieve_top_k
-    dense_q = get_embedder().embed([query])[0]
-    store = get_vectorstore()
+    dense_q = _guard("embedding", lambda: get_embedder().embed([query])[0])
+    store = _guard("vector store", get_vectorstore)
 
     rank_lists: list[list[QueryHit]] = []
     for coll in collections:
-        rank_lists.append(store.query(coll, dense_q, top_k))
+        rank_lists.append(_guard("vector store", store.query, coll, dense_q, top_k))
         if hybrid:
-            rank_lists.append(_bm25_search(coll, query, top_k))
+            rank_lists.append(_guard("keyword search", _bm25_search, coll, query, top_k))
 
     hits = _rrf_fuse(rank_lists) if len(rank_lists) > 1 else (rank_lists[0] if rank_lists else [])
 
@@ -141,15 +170,26 @@ def retrieve(
     if settings.enable_rerank and hits:
         # When MMR will diversify, rerank a wider pool so it has candidates to
         # choose from; otherwise rerank straight down to the final count.
-        hits = _rerank(query, hits, top_k if settings.enable_mmr else n_final)
+        hits = _guard(
+            "rerank", _rerank, query, hits, top_k if settings.enable_mmr else n_final
+        )
 
     if settings.enable_mmr and len(hits) > n_final:
-        cand_vecs = get_embedder().embed([h.text for h in hits])
+        cand_vecs = _guard("embedding", lambda: get_embedder().embed([h.text for h in hits]))
         order = mmr_order(dense_q, cand_vecs, n_final, settings.mmr_lambda)
         hits = [hits[i] for i in order]
     else:
         hits = hits[:n_final]
 
+    logger.debug(
+        "retrieved",
+        extra={
+            "collections": collections,
+            "hits": len(hits),
+            "hybrid": hybrid,
+            "ms": round((time.perf_counter() - started) * 1000, 1),
+        },
+    )
     return [
         Source(
             id=h.id,

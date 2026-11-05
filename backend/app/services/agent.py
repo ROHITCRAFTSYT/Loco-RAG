@@ -7,12 +7,16 @@ message list back to the caller to stream the final answer.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from typing import Any
 
 from app.schemas import Source
 from app.services import rag, websearch
 from app.services.llm import get_provider
+
+logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 4
 
@@ -54,7 +58,8 @@ TOOLS: list[dict[str, Any]] = [
 async def _run_tool(name: str, args: dict[str, Any], default_collection: str | None) -> list[Source]:
     if name == "search_documents":
         collection = args.get("collection") or default_collection
-        return rag.retrieve(args.get("query", ""), collection)
+        # Sync + CPU-bound (embedding, BM25): run off the event loop.
+        return await asyncio.to_thread(rag.retrieve, args.get("query", ""), collection)
     if name == "web_search":
         return await websearch.search(args.get("query", ""))
     return []
@@ -75,8 +80,9 @@ async def run(
     for _ in range(MAX_ROUNDS):
         try:
             assistant = await llm.chat_with_tools(messages, TOOLS, model=model)
-        except Exception:
+        except Exception as exc:
             # Model/endpoint doesn't support tools — fall back to plain answer.
+            logger.info("agent falling back to plain answer", extra={"reason": str(exc)})
             break
 
         tool_calls = assistant.get("tool_calls") or []
@@ -92,9 +98,17 @@ async def run(
                 args = json.loads(fn.get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
-            sources = await _run_tool(name, args, default_collection)
+            try:
+                sources = await _run_tool(name, args, default_collection)
+            except Exception as exc:
+                # Tell the model the tool broke so it can answer without it (or
+                # say so) instead of the whole turn failing with a 500.
+                logger.warning("agent tool failed", extra={"tool": name, "error": str(exc)})
+                sources = []
+                tool_result = f"Tool error: {exc}"
+            else:
+                tool_result = rag.build_context(sources) if sources else "No results found."
             all_sources += sources
-            tool_result = rag.build_context(sources) if sources else "No results found."
             messages.append(
                 {
                     "role": "tool",
