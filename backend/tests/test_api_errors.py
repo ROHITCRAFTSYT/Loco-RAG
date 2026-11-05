@@ -116,7 +116,11 @@ def test_chat_degrades_when_retrieval_fails(client, monkeypatch):
     monkeypatch.setattr(chat_router, "get_provider", lambda name: llm)
 
     def boom(q, collections):
-        raise RetrievalError("Document search failed during vector store (x)", stage="vector store")
+        raise RetrievalError(
+            "Document search failed during vector store (OSError: disk full)",
+            stage="vector store",
+            cause="OSError: disk full",
+        )
 
     monkeypatch.setattr(chat_router.rag, "retrieve", boom)
     cid = _new_conversation(client, rag_enabled=True)
@@ -128,6 +132,16 @@ def test_chat_degrades_when_retrieval_fails(client, monkeypatch):
     # The model is told retrieval failed so it can say so to the user.
     system_notes = [m["content"] for m in llm.seen_messages if m["role"] == "system"]
     assert any("Document search was unavailable" in n for n in system_notes)
+
+    # ...and the warning is persisted, so the UI banner survives a reload.
+    msgs = client.get(f"/api/conversations/{cid}/messages").json()
+    assistant = [m for m in msgs if m["role"] == "assistant"][-1]
+    assert assistant["warnings"] == [
+        "Document search was unavailable for this message (vector store failed: OSError: disk full)."
+    ]
+    assert "warnings" not in assistant["usage"]
+    user = [m for m in msgs if m["role"] == "user"][-1]
+    assert user["warnings"] is None
 
 
 def test_chat_degrades_when_web_search_fails(client, monkeypatch):

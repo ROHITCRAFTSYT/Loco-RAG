@@ -37,6 +37,7 @@ def test_embedding_failure(monkeypatch):
         rag.retrieve("q", "kb")
     assert ei.value.stage == "embedding"
     assert "embedding server down" in str(ei.value)
+    assert ei.value.cause == "ConnectionError: embedding server down"
 
 
 def test_vector_store_failure(monkeypatch):

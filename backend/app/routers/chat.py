@@ -63,7 +63,8 @@ async def _gather_sources(
             # event loop so other requests' token streams don't stall.
             sources += await asyncio.to_thread(rag.retrieve, query, collections)
         except rag.RetrievalError as exc:
-            warnings.append(f"Document search was unavailable for this message ({exc}).")
+            detail = f"{exc.stage} failed: {exc.cause}" if exc.cause else f"{exc.stage} failed"
+            warnings.append(f"Document search was unavailable for this message ({detail}).")
     if web_on:
         try:
             sources += await websearch.search(query)
@@ -188,7 +189,9 @@ async def chat(
                 role="assistant",
                 content=acc,
                 sources=json.dumps([s.model_dump() for s in sources]) if sources else None,
-                usage=json.dumps(usage),
+                # Warnings ride in the usage JSON (no schema migration); the
+                # messages API lifts them out into a top-level "warnings" field.
+                usage=json.dumps({**usage, "warnings": warnings} if warnings else usage),
             )
             s2.add(assistant)
             conv2 = s2.get(Conversation, conversation_id)

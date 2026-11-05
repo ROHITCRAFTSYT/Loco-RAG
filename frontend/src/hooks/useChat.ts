@@ -59,6 +59,14 @@ export function useChat(conversationId: string | null) {
                 m.id === assistantMsg.id ? { ...m, content: m.content + t } : m,
               ),
             ),
+          onWarning: (w) =>
+            setMessages((ms) =>
+              ms.map((m) =>
+                m.id === assistantMsg.id
+                  ? { ...m, warnings: [...(m.warnings ?? []), w] }
+                  : m,
+              ),
+            ),
           onUsage: (u: Usage) =>
             setMessages((ms) =>
               ms.map((m) => (m.id === assistantMsg.id ? { ...m, usage: u } : m)),

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Pencil, User, Volume2, VolumeX } from "lucide-react";
+import { AlertTriangle, Bot, Pencil, User, Volume2, VolumeX } from "lucide-react";
 import type { Message } from "../types";
 import { Markdown } from "./Markdown";
 import { SourcePanel } from "./SourcePanel";
@@ -31,6 +31,25 @@ function SpeakButton({ text }: { text: string }) {
   );
 }
 
+/** Shown above an answer the backend produced in degraded mode, e.g. when
+ *  document or web search failed and the model answered without it. */
+function WarningBanner({ warnings }: { warnings: string[] }) {
+  return (
+    <div
+      role="status"
+      className="mb-2 flex gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2
+                 text-[0.8rem] text-warn"
+    >
+      <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <div className="space-y-0.5">
+        {warnings.map((w, i) => (
+          <p key={i}>{w}</p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   messages: Message[];
   onEdit: (m: Message) => void;
@@ -54,6 +73,9 @@ export function MessageList({ messages, onEdit }: Props) {
             {m.role === "user" ? <User size={16} /> : <Bot size={16} />}
           </div>
           <div className="min-w-0 flex-1">
+            {m.role === "assistant" && m.warnings && m.warnings.length > 0 && (
+              <WarningBanner warnings={m.warnings} />
+            )}
             {m.role === "assistant" ? (
               <Markdown content={m.content || (m.streaming ? "▍" : "")} />
             ) : (

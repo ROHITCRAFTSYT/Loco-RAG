@@ -24,9 +24,10 @@ class RetrievalError(RuntimeError):
     """Embedding, vector-store or rerank failure during retrieval. ``stage``
     names the failing step; ``str(exc)`` is safe to show to the user."""
 
-    def __init__(self, message: str, *, stage: str):
+    def __init__(self, message: str, *, stage: str, cause: str = ""):
         super().__init__(message)
         self.stage = stage
+        self.cause = cause  # e.g. "ConnectError: Cannot reach ollama at ..."
 
 
 def _guard(stage: str, fn, *args):
@@ -39,8 +40,9 @@ def _guard(stage: str, fn, *args):
             "retrieval stage failed",
             extra={"stage": stage, "error": f"{type(exc).__name__}: {exc}"},
         )
+        cause = f"{type(exc).__name__}: {exc}"
         raise RetrievalError(
-            f"Document search failed during {stage} ({type(exc).__name__}: {exc})", stage=stage
+            f"Document search failed during {stage} ({cause})", stage=stage, cause=cause
         ) from exc
 
 

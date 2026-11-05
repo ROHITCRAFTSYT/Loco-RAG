@@ -74,13 +74,16 @@ def list_messages(conversation_id: str, session: Session = Depends(get_session))
     ).all()
     out = []
     for m in rows:
+        usage = json.loads(m.usage) if m.usage else None
+        warnings = usage.pop("warnings", None) if isinstance(usage, dict) else None
         out.append(
             {
                 "id": m.id,
                 "role": m.role,
                 "content": m.content,
                 "sources": json.loads(m.sources) if m.sources else None,
-                "usage": json.loads(m.usage) if m.usage else None,
+                "usage": usage,
+                "warnings": warnings,
                 "created_at": m.created_at,
             }
         )
